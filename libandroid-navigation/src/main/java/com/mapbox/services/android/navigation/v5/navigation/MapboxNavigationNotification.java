@@ -33,6 +33,7 @@ import static com.mapbox.services.android.navigation.v5.navigation.NavigationCon
 class MapboxNavigationNotification implements NavigationNotification {
   private static final String END_NAVIGATION_ACTION = "com.mapbox.intent.action.END_NAVIGATION";
   private final DistanceUtils distanceUtils;
+  private final TimeUtils timeUtils;
   private NotificationCompat.Builder notificationBuilder;
   private NotificationManager notificationManager;
   private Notification notification;
@@ -50,11 +51,13 @@ class MapboxNavigationNotification implements NavigationNotification {
     }
   };
 
-  MapboxNavigationNotification(Context context, MapboxNavigation mapboxNavigation) {
+  MapboxNavigationNotification(Context context, MapboxNavigation mapboxNavigation,
+                               @NavigationTimeFormat.Type int timeFormatType) {
     this.mapboxNavigation = mapboxNavigation;
     RouteOptions routeOptions = mapboxNavigation.getRoute().routeOptions();
     this.distanceUtils = new DistanceUtils(
       context, routeOptions.language(), routeOptions.voiceUnits());
+    this.timeUtils = new TimeUtils(context, timeFormatType);
     initialize(context);
   }
 
@@ -179,15 +182,15 @@ class MapboxNavigationNotification implements NavigationNotification {
 
   private void updateArrivalTime(RouteProgress routeProgress) {
     if (currentArrivalTime == null || newArrivalTime(routeProgress)) {
-      currentArrivalTime = TimeUtils.formatArrivalTime(routeProgress.durationRemaining());
+      currentArrivalTime = timeUtils.formatTime(routeProgress.durationRemaining());
       notificationRemoteViews.setTextViewText(R.id.notificationArrivalText,
         String.format(Locale.getDefault(), "%s ETA", currentArrivalTime));
     }
   }
 
   private boolean newArrivalTime(RouteProgress routeProgress) {
-    return currentArrivalTime != null && !currentArrivalTime.equals(TimeUtils
-      .formatArrivalTime(routeProgress.durationRemaining()));
+    return currentArrivalTime != null && !currentArrivalTime.equals(timeUtils
+      .formatTime(routeProgress.durationRemaining()));
   }
 
   private void updateManeuverImage(LegStep step) {

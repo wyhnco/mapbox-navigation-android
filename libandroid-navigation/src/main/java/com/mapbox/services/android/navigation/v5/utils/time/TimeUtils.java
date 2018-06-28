@@ -1,10 +1,12 @@
 package com.mapbox.services.android.navigation.v5.utils.time;
 
+import android.content.Context;
 import android.graphics.Typeface;
 import android.text.SpannableStringBuilder;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
 
+import com.mapbox.services.android.navigation.v5.navigation.NavigationTimeFormat;
 import com.mapbox.services.android.navigation.v5.utils.span.SpanItem;
 import com.mapbox.services.android.navigation.v5.utils.span.SpanUtils;
 import com.mapbox.services.android.navigation.v5.utils.span.TextSpanItem;
@@ -13,30 +15,25 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 public class TimeUtils {
 
-  private static final String ARRIVAL_TIME_STRING_FORMAT = "%tl:%tM %tp%n";
   private static final String DAY = " day ";
   private static final String DAYS = " days ";
   private static final String HOUR = " hr ";
   private static final String MINUTE = " min ";
+  private final TimeFormatter timeFormatter;
 
-  public static String formatArrivalTime(double routeDuration) {
-    Calendar calendar = Calendar.getInstance();
-    calendar.add(Calendar.SECOND, (int) routeDuration);
 
-    return String.format(Locale.getDefault(), ARRIVAL_TIME_STRING_FORMAT,
-      calendar, calendar, calendar);
+  public TimeUtils(Context context, @NavigationTimeFormat.Type int type) {
+    timeFormatter = new TimeFormatterFactory().getTimeFormatter(context, type);
   }
 
-  public static String formatTime(Calendar time, double routeDuration, int type, boolean isDeviceTwentyFourHourFormat) {
-    time.add(Calendar.SECOND, (int) routeDuration);
-    TimeFormattingChain chain = new TimeFormattingChain();
-    String formattedTime = chain.setup(isDeviceTwentyFourHourFormat).obtainTimeFormatted(type, time);
-    return formattedTime;
+  public String formatTime(double routeDuration) {
+    Calendar calendar = Calendar.getInstance();
+    calendar.add(Calendar.SECOND, (int) routeDuration);
+    return timeFormatter.formatTime(routeDuration);
   }
 
   public static SpannableStringBuilder formatTimeRemaining(double routeDuration) {
@@ -83,5 +80,4 @@ public class TimeUtils {
     long diffInMillies = date2.getTime() - date1.getTime();
     return timeUnit.convert(diffInMillies, TimeUnit.MILLISECONDS);
   }
-
 }
