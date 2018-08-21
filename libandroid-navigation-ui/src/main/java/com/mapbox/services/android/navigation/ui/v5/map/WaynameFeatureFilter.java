@@ -9,10 +9,6 @@ import com.mapbox.geojson.Geometry;
 import com.mapbox.geojson.LineString;
 import com.mapbox.geojson.MultiLineString;
 import com.mapbox.geojson.Point;
-import com.mapbox.mapboxsdk.annotations.Marker;
-import com.mapbox.mapboxsdk.annotations.MarkerOptions;
-import com.mapbox.mapboxsdk.geometry.LatLng;
-import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.turf.TurfMeasurement;
 
 import java.util.ArrayList;
@@ -28,44 +24,44 @@ import static com.mapbox.turf.TurfMisc.lineSliceAlong;
 
 class WaynameFeatureFilter {
 
-  private static final int FIRST_FEATURE = 0;
+  private static final int FIRST = 0;
   private static final int ONE_FEATURE = 1;
   private static final int TWO_POINTS = 2;
   private static final double ZERO_METERS = 0d;
-  private static final double TEN_METERS = 10d;
+  private static final double TEN = 10d;
   private final List<Feature> queriedFeatures;
   private final Point currentPoint;
   private final LineString currentStepLineString;
 
-  private final MapboxMap map;
-  private List<Marker> markers = new ArrayList<>();
-
-  WaynameFeatureFilter(List<Feature> queriedFeatures, Location currentLocation, List<Point> currentStepPoints, MapboxMap map) {
+  WaynameFeatureFilter(List<Feature> queriedFeatures, Location currentLocation, List<Point> currentStepPoints) {
     this.queriedFeatures = queriedFeatures;
-    currentPoint = Point.fromLngLat(currentLocation.getLongitude(), currentLocation.getLatitude());
-    currentStepLineString = LineString.fromLngLats(currentStepPoints);
-    this.map = map;
+    this.currentPoint = Point.fromLngLat(currentLocation.getLongitude(), currentLocation.getLatitude());
+    this.currentStepLineString = LineString.fromLngLats(currentStepPoints);
   }
 
-  @NonNull
+  @Nullable
   Feature filter() {
+    // TODO If possible, it'd great if filterQueriedFeatures() returned @NonNull features
+    // See https://github.com/mapbox/mapbox-navigation-android/pull/1156#issuecomment-414659621
     return filterQueriedFeatures();
   }
 
   private Feature filterQueriedFeatures() {
-    Feature filteredFeature = queriedFeatures.get(FIRST_FEATURE);
+    Timber.d("NAV_DEBUG *************************************** ***************************************");
+    Feature filteredFeature = queriedFeatures.get(FIRST);
     if (queriedFeatures.size() == ONE_FEATURE) {
+      Timber.d("NAV_DEBUG No filter needed");
+      logName(filteredFeature);
       return filteredFeature;
     }
-    Timber.d("NAV_DEBUG *************************************** ***************************************");
     logNames(queriedFeatures);
+    double smallestUserDistanceToFeature = Double.POSITIVE_INFINITY;
     for (Feature feature : queriedFeatures) {
       Timber.d("NAV_DEBUG *************************************** Filtering %s", feature.getStringProperty("name"));
       Geometry featureGeometry = feature.geometry();
       if (featureGeometry == null) {
         continue;
       }
-      // Convert feature geometry to LineStrings
       List<LineString> featureLineStrings = new ArrayList<>();
       if (featureGeometry instanceof LineString) {
         featureLineStrings.add((LineString) featureGeometry);
@@ -73,83 +69,85 @@ class WaynameFeatureFilter {
         featureLineStrings = ((MultiLineString) featureGeometry).lineStrings();
       }
 
-      double smallestUserDistanceToFeature = Double.POSITIVE_INFINITY;
       for (LineString featureLineString : featureLineStrings) {
-
-        // Point ahead on the feature
-        List<Point> lineStringCoordinates = featureLineString.coordinates();
-        int coordinateSize = lineStringCoordinates.size();
-        if (coordinateSize < TWO_POINTS) {
-          return null;
-        }
-        Point lastLinePoint = lineStringCoordinates.get(coordinateSize - 1);
-        if (currentPoint == null || currentPoint.equals(lastLinePoint)) {
-          return null;
-        }
-        LineString sliceFromCurrentPoint = lineSlice(currentPoint, lastLinePoint, featureLineString);
-        Point pointAheadFeature = along(sliceFromCurrentPoint, 10, UNIT_METRES);
-        Timber.d("NAV_DEBUG pointAheadFeature: %s", pointAheadFeature);
-        addMarker(pointAheadFeature);
-
-        // Point behind on the feature
-        LineString reversedFeatureLineString = reverseFeatureLineStringCoordinates(featureLineString);
-        List<Point> reversedFeatureLineStringCoordinates = reversedFeatureLineString.coordinates();
-        int reversedCoordinateSize = reversedFeatureLineStringCoordinates.size();
-        if (reversedCoordinateSize < TWO_POINTS) {
-          return null;
-        }
-        Point lastReversedLinePoint = reversedFeatureLineStringCoordinates.get(0);
-        if (currentPoint.equals(lastReversedLinePoint)) {
-          return null;
-        }
-        LineString reverseSliceFromCurrentPoint = lineSlice(currentPoint, lastReversedLinePoint, reversedFeatureLineString);
-        Point pointBehindFeature = along(reverseSliceFromCurrentPoint, 10, UNIT_METRES);
-        Timber.d("NAV_DEBUG pointBehindFeature: %s", pointBehindFeature);
-        addMarker(pointBehindFeature);
-
-        // Point ahead on the step
         List<Point> currentStepCoordinates = currentStepLineString.coordinates();
-        int stepCoordinateSize = currentStepCoordinates.size();
-        if (stepCoordinateSize < TWO_POINTS) {
+        int stepCoordinatesSize = currentStepCoordinates.size();
+        if (stepCoordinatesSize < TWO_POINTS) {
           return null;
         }
-        Point lastStepPoint = currentStepCoordinates.get(stepCoordinateSize - 1);
+        int lastStepCoordinate = stepCoordinatesSize - 1;
+        Point lastStepPoint = currentStepCoordinates.get(lastStepCoordinate);
         if (currentPoint.equals(lastStepPoint)) {
           return null;
         }
         LineString stepSliceFromCurrentPoint = lineSlice(currentPoint, lastStepPoint, currentStepLineString);
-        Point pointAheadUserOnStep = along(stepSliceFromCurrentPoint, 10, UNIT_METRES);
+        Point pointAheadUserOnStep = along(stepSliceFromCurrentPoint, TEN, UNIT_METRES);
+        Timber.d("NAV_DEBUG currentPoint: %s", currentPoint);
         Timber.d("NAV_DEBUG pointAheadUserOnStep: %s", pointAheadUserOnStep);
-        addMarker(pointAheadUserOnStep);
+
+        List<Point> lineCoordinates = featureLineString.coordinates();
+        Timber.d("NAV_DEBUG lineCoordinates");
+        for (int i = 0; i < lineCoordinates.size(); i++) {
+          Timber.d("NAV_DEBUG point %s: %s", i, lineCoordinates.get(i));
+        }
+        int lineCoordinatesSize = lineCoordinates.size();
+        if (lineCoordinatesSize < TWO_POINTS) {
+          return null;
+        }
+        int lastLineCoordinate = lineCoordinatesSize - 1;
+        Point lastLinePoint = lineCoordinates.get(lastLineCoordinate);
+        if (currentPoint.equals(lastLinePoint)) {
+          return null;
+        }
+        Timber.d("NAV_DEBUG lastLinePoint: %s", lastLinePoint);
+
+        Point firstLinePoint = lineCoordinates.get(FIRST);
+        if (currentPoint.equals(firstLinePoint)) {
+          return null;
+        }
+        Timber.d("NAV_DEBUG firstLinePoint: %s", firstLinePoint);
+
+        LineString reversedFeatureLine = reverseFeatureLineStringCoordinates(featureLineString);
+        LineString currentAheadLine = reversedFeatureLine;
+        LineString currentBehindLine = featureLineString;
+
+        Point currentDirectionAhead = firstLinePoint;
+        Point currentDirectionBehind = lastLinePoint;
+
+        double distanceCurrentFirst = calculateDistance(currentPoint, firstLinePoint);
+        double distanceAheadFirst = calculateDistance(pointAheadUserOnStep, firstLinePoint);
+        if (distanceAheadFirst >= distanceCurrentFirst) {
+          currentAheadLine = featureLineString;
+          currentBehindLine = reversedFeatureLine;
+          currentDirectionAhead = lastLinePoint;
+          currentDirectionBehind = firstLinePoint;
+          Timber.d("NAV_DEBUG Moving along last point");
+        }
+
+        LineString sliceFromCurrentPoint = lineSlice(currentPoint, currentDirectionAhead, currentAheadLine);
+        Point pointAheadFeature = along(sliceFromCurrentPoint, TEN, UNIT_METRES);
+        Timber.d("NAV_DEBUG pointAheadFeature: %s", pointAheadFeature);
+        LineString reverseSliceFromCurrentPoint = lineSlice(currentPoint, currentDirectionBehind, currentBehindLine);
+        Point pointBehindFeature = along(reverseSliceFromCurrentPoint, TEN, UNIT_METRES);
+        Timber.d("NAV_DEBUG pointBehindFeature: %s", pointBehindFeature);
 
         double userDistanceToAheadFeature = calculateDistance(pointAheadUserOnStep, pointAheadFeature);
         Timber.d("NAV_DEBUG userDistanceToAheadFeature: %s", userDistanceToAheadFeature);
-
         double userDistanceToBehindFeature = calculateDistance(pointAheadUserOnStep, pointBehindFeature);
         Timber.d("NAV_DEBUG userDistanceToBehindFeature: %s", userDistanceToBehindFeature);
-
         double minDistanceToFeature = Math.min(userDistanceToAheadFeature, userDistanceToBehindFeature);
         Timber.d("NAV_DEBUG minDistanceToFeature: %s", minDistanceToFeature);
 
+        // TODO What happens in the remote case in which minDistanceToFeature == smallestUserDistanceToFeature?
         if (minDistanceToFeature < smallestUserDistanceToFeature) {
           smallestUserDistanceToFeature = minDistanceToFeature;
           filteredFeature = feature;
         }
-        clearMarkers();
       }
     }
+    Timber.d("NAV_DEBUG smallestUserDistanceToFeature: %s", smallestUserDistanceToFeature);
     logName(filteredFeature);
     return filteredFeature;
-  }
-
-  private void addMarker(Point point) {
-    markers.add(map.addMarker(new MarkerOptions().position(new LatLng(point.latitude(), point.longitude()))));
-  }
-
-  private void clearMarkers() {
-//    for (Marker marker : markers) {
-//      map.removeMarker(marker);
-//    }
   }
 
   private void logNames(List<Feature> queriedFeatures) {
@@ -191,8 +189,7 @@ class WaynameFeatureFilter {
     }
     // TODO find nearestPointOnLine instead of currentPoint?
     LineString sliceFromCurrentPoint = lineSlice(currentPoint, lastLinePoint, lineString);
-    LineString meterSlice = lineSliceAlong(sliceFromCurrentPoint, ZERO_METERS,
-      metersFromCurrentPoint, UNIT_METRES);
+    LineString meterSlice = lineSliceAlong(sliceFromCurrentPoint, ZERO_METERS, metersFromCurrentPoint, UNIT_METRES);
     List<Point> slicePoints = meterSlice.coordinates();
     if (slicePoints.isEmpty()) {
       return null;
