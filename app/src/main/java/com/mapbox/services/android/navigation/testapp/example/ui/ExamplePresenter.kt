@@ -169,6 +169,12 @@ class ExamplePresenter(private val view: ExampleView, private val viewModel: Exa
     }
   }
 
+  fun onMapLongClick(point: LatLng, mapboxMap: MapboxMap) {
+    val pointF = mapboxMap.projection.toScreenLocation(point)
+    // TODO convert Feature to CarmenFeature
+    //onDestinationFound(mapboxMap.queryRenderedFeatures(pointF).first())
+  }
+  
   fun onMilestoneUpdate(milestone: Milestone?) {
     milestone?.let {
       if (milestone is BannerInstructionMilestone) {
